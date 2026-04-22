@@ -2,7 +2,7 @@
 
 `VRCX Insights Tool` 是一个给普通用户使用的本地桌面工具，用来分析你自己的 `VRCX.sqlite3`，帮助你回看在 VRChat 里的互动关系、共同活动轨迹，以及和某些人的共处情况。
 
-它的定位很简单：把 VRCX 已经记录下来的历史数据，整理成更容易看的结果。
+它的定位很简单：把 [VRCX](https://github.com/vrcx-team/VRCX) 已经记录下来的历史数据，整理成更容易看的结果。
 
 ## 它能做什么
 
@@ -43,7 +43,11 @@
 
 使用前只需要准备两样东西：
 
-- 一份可用的 `VRCX.sqlite3`
+> [!WARNING]
+>
+> 注意，所有数据均来源于VRCX，你可能需要持久运行VRCX以获取较多数据
+
+- 一份可用的 `VRCX.sqlite3`，启动时会尝试自动读取
 - Windows 打包版，或者 Node.js 环境
 
 如果你是普通用户，优先推荐直接使用 Windows 打包产物。
@@ -52,15 +56,12 @@
 
 ### 方式一：直接使用 Windows 打包版
 
-项目支持以下 Windows 产物：
+项目支持以下 Windows 产物，请到[Releases](https://github.com/meng-luo/vrcx-insights-tool/releases)下载：
 
-- 安装版
-- Portable 便携版
+- 安装版(setup)
+- Portable 便携版(portable)
 
-如果你使用的是打包版：
 
-- 不需要额外安装 Node.js
-- 不需要安装 `sqlite3` 命令行
 - 启动后按界面提示选择 VRCX 数据文件夹即可
 
 ### 方式二：从源码运行
@@ -191,7 +192,6 @@ npm run release:win
 - 结果依赖 VRCX 历史记录本身是否完整
 - 如果你的数据库缺少某些关键表，程序可能无法正常初始化
 - 世界名称补全依赖网络；网络不可用时不影响核心本地分析，但名称可能不完整
-- 当前项目主要提供 Windows 打包流程；macOS / Linux 更适合源码运行
 
 ## 项目地址
 
