@@ -127,6 +127,8 @@ export class SqliteReadRepository {
   }
 
   getUserSessionInputs(userId, { fromMs = 0, toMs = Number.MAX_SAFE_INTEGER } = {}) {
+    const boundedFromMs = fromMs ?? 0;
+    const boundedToMs = toMs ?? Number.MAX_SAFE_INTEGER;
     return this.db
       .prepare(
         `
@@ -150,8 +152,8 @@ export class SqliteReadRepository {
       )
       .all({
         userId,
-        fromMs,
-        toMs
+        fromMs: boundedFromMs,
+        toMs: boundedToMs
       });
   }
 
@@ -166,7 +168,8 @@ export class SqliteReadRepository {
     }
 
     const placeholders = buildPlaceholders(ids);
-    const params = [...ids, toMs];
+    const boundedToMs = toMs ?? Number.MAX_SAFE_INTEGER;
+    const params = [...ids, boundedToMs];
     const meta = this.getMeta();
 
     const localRows = runAll(
@@ -272,7 +275,7 @@ export class SqliteReadRepository {
       filters.push(`AND user_id NOT IN (${buildPlaceholders(excludeUserIds)})`);
       params.push(...excludeUserIds);
     }
-    params.push(toMs);
+    params.push(toMs ?? Number.MAX_SAFE_INTEGER);
     const extraFilterSql = filters.join('\n        ');
     const meta = this.getMeta();
 

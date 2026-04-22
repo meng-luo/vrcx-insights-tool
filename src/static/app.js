@@ -6,39 +6,16 @@ import {
   getWorldMetaLabel,
   getWorldTooltip
 } from './hiddenIdentifiers.js';
+import {
+  buildRangeQueryObject,
+  getPresetRangeValues,
+  normalizeDateRangeChange
+} from './rangeFilters.js';
 import { buildSelectableUserOptions } from './selectableUsers.js';
 
 const { createApp, reactive, computed, onMounted } = window.Vue;
 const { ElMessage } = window.ElementPlus;
 const insightsApi = window.vrcxInsights;
-
-function formatDateValue(date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function getPresetRangeValues(preset) {
-  const now = new Date();
-  const to = formatDateValue(now);
-
-  if (preset === 'all') {
-    return [];
-  }
-
-  let fromDate = null;
-  if (preset === 'week') {
-    fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  } else if (preset === 'month') {
-    fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  } else if (preset === 'year') {
-    fromDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-  }
-
-  if (!fromDate) {
-    return [];
-  }
-
-  return [formatDateValue(fromDate), to];
-}
 
 function formatDuration(ms) {
   if (!ms || ms <= 0) return '0m';
@@ -105,6 +82,8 @@ createApp({
               v-model="state.dateRange"
               type="daterange"
               unlink-panels
+              :empty-values="[null, undefined]"
+              :value-on-clear="null"
               range-separator="至"
               start-placeholder="开始日期"
               end-placeholder="结束日期"
@@ -654,14 +633,12 @@ createApp({
     }
 
     function getRangeQuery() {
-      const qs = new URLSearchParams();
-      if (state.rangePreset === 'all' || !Array.isArray(state.dateRange) || state.dateRange.length !== 2) {
-        qs.set('all', '1');
-        return qs;
-      }
-      qs.set('from', state.dateRange[0]);
-      qs.set('to', state.dateRange[1]);
-      return qs;
+      return new URLSearchParams(
+        buildRangeQueryObject({
+          rangePreset: state.rangePreset,
+          dateRange: state.dateRange
+        })
+      );
     }
 
     function ensureSelections() {
@@ -685,12 +662,9 @@ createApp({
     }
 
     function handleDateRangeChange(value) {
-      if (!Array.isArray(value) || value.length !== 2) {
-        state.dateRange = [];
-        state.rangePreset = 'all';
-        return;
-      }
-      state.rangePreset = 'custom';
+      const normalized = normalizeDateRangeChange(value);
+      state.dateRange = normalized.dateRange;
+      state.rangePreset = normalized.rangePreset;
     }
 
     async function setPresetDates(preset, shouldApply = false) {

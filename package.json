@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "electron src/electron/main.js",
+    "start": "electron --inspect=5858 src/electron/main.js",
     "dev": "electron src/electron/main.js",
     "build:win": "electron-builder --win nsis portable --x64",
     "release:win": "electron-builder --win nsis portable --x64 --publish never",
@@ -17,7 +17,7 @@
     "vue": "^3.5.32"
   },
   "devDependencies": {
-    "electron": "^35.2.0",
+    "electron": "^41.2.2",
     "electron-builder": "^26.0.12",
     "vitest": "^2.1.8"
   },
@@ -36,6 +36,9 @@
       "main": "src/electron/main.js"
     },
     "asar": true,
+    "toolsets": {
+      "winCodeSign": "1.1.0"
+    },
     "win": {
       "icon": "build/icon.ico",
       "target": [

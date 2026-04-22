@@ -30,6 +30,9 @@ describe('windows packaging config', () => {
     expect(packageJson.build?.files).toEqual(['src/**/*', 'package.json']);
     expect(packageJson.build?.extraMetadata).toEqual({ main: 'src/electron/main.js' });
     expect(packageJson.build?.asar).toBe(true);
+    expect(packageJson.build?.toolsets).toMatchObject({
+      winCodeSign: '1.1.0'
+    });
     expect(packageJson.build?.win).toMatchObject({
       icon: 'build/icon.ico',
       target: [
