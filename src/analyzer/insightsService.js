@@ -1,3 +1,4 @@
+import { CacheStore } from './cacheStore.js';
 import { buildIndex } from './indexBuilder.js';
 import { clipSessionToRange, sessionIntersectsRange, toDateRangeMs } from './dateRange.js';
 import {
@@ -7,6 +8,7 @@ import {
   isSelfPresentInSegments
 } from './overlap.js';
 import { parseLocationHost } from './locationHost.js';
+import { SqliteReadRepository } from './sqliteReadRepository.js';
 
 function groupByLocation(sessions) {
   const map = new Map();
@@ -37,36 +39,50 @@ function summarizeLocationOverlap(listA, listB) {
 }
 
 export class InsightsService {
-  constructor(dbPath) {
+  constructor(dbPath, { repositoryFactory = (target) => new SqliteReadRepository(target) } = {}) {
     this.dbPath = dbPath;
+    this.repository = repositoryFactory(dbPath);
+    this.cache = new CacheStore();
     this.index = null;
   }
 
   reload() {
-    this.index = buildIndex(this.dbPath);
-    return this.getMeta();
+    this.clearAnalysisCaches();
+    return this.refreshMeta();
   }
 
   ensureReady() {
     if (!this.index) {
-      this.reload();
+      this.index = buildIndex(this.dbPath);
     }
   }
 
+  refreshMeta() {
+    const meta = this.repository.getMeta();
+    this.cache.setMeta(meta);
+    return this.getMeta();
+  }
+
+  clearAnalysisCaches() {
+    this.index = null;
+    this.cache.clearAnalysis();
+  }
+
   getMeta() {
-    this.ensureReady();
+    const meta = this.cache.getMeta() || this.repository.getMeta();
+    this.cache.setMeta(meta);
     const idx = this.index;
     return {
-      dbPath: idx.dbPath,
-      loadedAt: idx.loadedAt,
-      selfUserId: idx.selfUserId,
-      selfDisplayName: idx.selfDisplayName,
-      friendTable: idx.friendTable,
-      friendCount: idx.friendList.length,
-      sessionCount: idx.sessions.length,
-      userCount: idx.byUser.size,
-      locationCount: idx.byLocation.size,
-      friends: idx.friendList
+      dbPath: meta.dbPath,
+      loadedAt: idx?.loadedAt || null,
+      selfUserId: meta.selfUserId,
+      selfDisplayName: meta.selfDisplayName,
+      friendTable: meta.friendTable,
+      friendCount: meta.friendList.length,
+      sessionCount: idx?.sessions.length || 0,
+      userCount: idx?.byUser.size || 0,
+      locationCount: idx?.byLocation.size || 0,
+      friends: meta.friendList
     };
   }
 

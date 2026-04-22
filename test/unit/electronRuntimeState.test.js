@@ -100,18 +100,14 @@ describe('electron runtime state', () => {
     expect(saved).toEqual({ dataDir });
   });
 
-  test('reloads the active service through the async index builder without calling sync reload again', async () => {
+  test('reload clears analysis caches and refreshes metadata without rebuilding a full index', async () => {
     const dbPath = '/tmp/VRCX.sqlite3';
     const service = {
       dbPath,
-      index: { stale: true },
-      reload: vi.fn(),
-      getMeta: vi.fn(() => ({ dbPath, loadedAt: 'now' }))
+      clearAnalysisCaches: vi.fn(),
+      refreshMeta: vi.fn(() => ({ dbPath, selfUserId: 'usr_self' })),
+      getMeta: vi.fn(() => ({ dbPath, selfUserId: 'usr_self' }))
     };
-    const reloadIndexAsync = vi.fn(async (targetPath) => ({
-      dbPath: targetPath,
-      loadedAt: 'now'
-    }));
 
     const runtime = new ElectronAppRuntime({
       userDataPath: '/tmp/vrcx-user',
@@ -125,8 +121,7 @@ describe('electron runtime state', () => {
           throw new Error('missing');
         })
       },
-      serviceFactory: vi.fn(() => service),
-      reloadIndexAsync
+      serviceFactory: vi.fn(() => service)
     });
 
     runtime.service = service;
@@ -139,13 +134,8 @@ describe('electron runtime state', () => {
 
     const meta = await runtime.reload();
 
-    expect(reloadIndexAsync).toHaveBeenCalledWith(dbPath);
-    expect(service.reload).not.toHaveBeenCalled();
-    expect(service.index).toEqual({
-      dbPath,
-      loadedAt: 'now'
-    });
-    expect(service.getMeta).toHaveBeenCalledTimes(1);
-    expect(meta).toEqual({ dbPath, loadedAt: 'now' });
+    expect(service.clearAnalysisCaches).toHaveBeenCalledTimes(1);
+    expect(service.refreshMeta).toHaveBeenCalledTimes(1);
+    expect(meta).toEqual({ dbPath, selfUserId: 'usr_self' });
   });
 });

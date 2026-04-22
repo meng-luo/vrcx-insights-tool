@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { buildIndexInWorker } from '../analyzer/indexBuilderAsync.js';
 import { InsightsService } from '../analyzer/insightsService.js';
 
 export function getConfigFilePath(userDataPath) {
@@ -73,8 +72,7 @@ export class ElectronAppRuntime {
     env = process.env,
     fsImpl = fs,
     dialogImpl = null,
-    serviceFactory = (dbPath) => new InsightsService(dbPath),
-    reloadIndexAsync = buildIndexInWorker
+    serviceFactory = (dbPath) => new InsightsService(dbPath)
   }) {
     this.userDataPath = userDataPath;
     this.appDataPath = appDataPath;
@@ -83,7 +81,6 @@ export class ElectronAppRuntime {
     this.fs = fsImpl;
     this.dialog = dialogImpl;
     this.serviceFactory = serviceFactory;
-    this.reloadIndexAsync = reloadIndexAsync;
     this.configPath = getConfigFilePath(userDataPath);
     this.service = null;
     this.state = createEmptyState({
@@ -174,8 +171,8 @@ export class ElectronAppRuntime {
 
   async reload() {
     const service = this.getService();
-    service.index = await this.reloadIndexAsync(service.dbPath);
-    return service.getMeta();
+    service.clearAnalysisCaches();
+    return service.refreshMeta();
   }
 
   updateDataDirectory(dataDir) {
