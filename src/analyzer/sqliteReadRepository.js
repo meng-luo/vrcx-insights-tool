@@ -33,6 +33,14 @@ function parseObservedAtMs(value) {
   return Number.isNaN(observedAtMs) ? 0 : observedAtMs;
 }
 
+function buildPlaceholders(list) {
+  return list.map(() => '?').join(', ');
+}
+
+function runAll(db, sql, params = []) {
+  return db.prepare(sql).all(...params);
+}
+
 export class SqliteReadRepository {
   constructor(dbPath) {
     this.dbPath = dbPath;
@@ -145,6 +153,243 @@ export class SqliteReadRepository {
         fromMs,
         toMs
       });
+  }
+
+  getSessionInputsForUsers(userIds, { toMs = Number.MAX_SAFE_INTEGER } = {}) {
+    const ids = Array.from(new Set((userIds || []).filter(Boolean)));
+    if (ids.length === 0) {
+      return {
+        localRows: [],
+        feedGpsRows: [],
+        feedOnlineOfflineRows: []
+      };
+    }
+
+    const placeholders = buildPlaceholders(ids);
+    const params = [...ids, toMs];
+    const meta = this.getMeta();
+
+    const localRows = runAll(
+      this.db,
+      `
+      SELECT
+        created_at AS createdAt,
+        user_id AS userId,
+        display_name AS displayName,
+        location,
+        time,
+        'local' AS source
+      FROM gamelog_join_leave
+      WHERE type = 'OnPlayerLeft'
+        AND time > 0
+        AND user_id IN (${placeholders})
+        AND location IS NOT NULL
+        AND location != ''
+        AND unixepoch(created_at) * 1000 < ?
+      ORDER BY created_at ASC
+      `,
+      params
+    );
+
+    const feedGpsRows = meta.feedGpsTable
+      ? runAll(
+          this.db,
+          `
+          SELECT
+            created_at AS createdAt,
+            user_id AS userId,
+            display_name AS displayName,
+            location,
+            world_name AS worldName,
+            previous_location AS previousLocation,
+            time,
+            group_name AS groupName
+          FROM ${meta.feedGpsTable}
+          WHERE user_id IN (${placeholders})
+            AND location IS NOT NULL
+            AND location != ''
+            AND unixepoch(created_at) * 1000 < ?
+          ORDER BY created_at ASC
+          `,
+          params
+        )
+      : [];
+
+    const feedOnlineOfflineRows = meta.feedOnlineOfflineTable
+      ? runAll(
+          this.db,
+          `
+          SELECT
+            created_at AS createdAt,
+            user_id AS userId,
+            display_name AS displayName,
+            type,
+            location,
+            world_name AS worldName,
+            time,
+            group_name AS groupName
+          FROM ${meta.feedOnlineOfflineTable}
+          WHERE user_id IN (${placeholders})
+            AND location IS NOT NULL
+            AND location != ''
+            AND (type = 'Online' OR type = 'Offline')
+            AND unixepoch(created_at) * 1000 < ?
+          ORDER BY created_at ASC
+          `,
+          params
+        )
+      : [];
+
+    return {
+      localRows,
+      feedGpsRows,
+      feedOnlineOfflineRows
+    };
+  }
+
+  getSessionInputsForLocations(
+    locations,
+    { toMs = Number.MAX_SAFE_INTEGER, excludeUserIds = [], includeUserIds = null } = {}
+  ) {
+    const locationList = Array.from(new Set((locations || []).filter(Boolean)));
+    if (locationList.length === 0) {
+      return {
+        localRows: [],
+        feedGpsRows: [],
+        feedOnlineOfflineRows: []
+      };
+    }
+
+    const locationClause = buildPlaceholders(locationList);
+    const filters = [];
+    const params = [...locationList];
+
+    if (Array.isArray(includeUserIds) && includeUserIds.length > 0) {
+      filters.push(`AND user_id IN (${buildPlaceholders(includeUserIds)})`);
+      params.push(...includeUserIds);
+    }
+    if (Array.isArray(excludeUserIds) && excludeUserIds.length > 0) {
+      filters.push(`AND user_id NOT IN (${buildPlaceholders(excludeUserIds)})`);
+      params.push(...excludeUserIds);
+    }
+    params.push(toMs);
+    const extraFilterSql = filters.join('\n        ');
+    const meta = this.getMeta();
+
+    const localRows = runAll(
+      this.db,
+      `
+      SELECT
+        created_at AS createdAt,
+        user_id AS userId,
+        display_name AS displayName,
+        location,
+        time,
+        'local' AS source
+      FROM gamelog_join_leave
+      WHERE type = 'OnPlayerLeft'
+        AND time > 0
+        AND location IN (${locationClause})
+        AND location IS NOT NULL
+        AND location != ''
+        ${extraFilterSql}
+        AND unixepoch(created_at) * 1000 < ?
+      ORDER BY created_at ASC
+      `,
+      params
+    );
+
+    const feedGpsRows = meta.feedGpsTable
+      ? runAll(
+          this.db,
+          `
+          SELECT
+            created_at AS createdAt,
+            user_id AS userId,
+            display_name AS displayName,
+            location,
+            world_name AS worldName,
+            previous_location AS previousLocation,
+            time,
+            group_name AS groupName
+          FROM ${meta.feedGpsTable}
+          WHERE (location IN (${locationClause}) OR previous_location IN (${locationClause}))
+            AND location IS NOT NULL
+            AND location != ''
+            ${extraFilterSql}
+            AND unixepoch(created_at) * 1000 < ?
+          ORDER BY created_at ASC
+          `,
+          [...locationList, ...locationList, ...params.slice(locationList.length)]
+        )
+      : [];
+
+    const feedOnlineOfflineRows = meta.feedOnlineOfflineTable
+      ? runAll(
+          this.db,
+          `
+          SELECT
+            created_at AS createdAt,
+            user_id AS userId,
+            display_name AS displayName,
+            type,
+            location,
+            world_name AS worldName,
+            time,
+            group_name AS groupName
+          FROM ${meta.feedOnlineOfflineTable}
+          WHERE location IN (${locationClause})
+            AND location IS NOT NULL
+            AND location != ''
+            AND (type = 'Online' OR type = 'Offline')
+            ${extraFilterSql}
+            AND unixepoch(created_at) * 1000 < ?
+          ORDER BY created_at ASC
+          `,
+          params
+        )
+      : [];
+
+    return {
+      localRows,
+      feedGpsRows,
+      feedOnlineOfflineRows
+    };
+  }
+
+  getLocationMetadata(locations) {
+    const locationList = Array.from(new Set((locations || []).filter(Boolean)));
+    if (locationList.length === 0) {
+      return new Map();
+    }
+
+    const rows = runAll(
+      this.db,
+      `
+      SELECT
+        location,
+        world_name AS worldName,
+        group_name AS groupName,
+        world_id AS worldId,
+        created_at AS createdAt
+      FROM gamelog_location
+      WHERE location IN (${buildPlaceholders(locationList)})
+      ORDER BY created_at DESC
+      `,
+      locationList
+    );
+
+    const locationMetaByLocation = new Map();
+    for (const row of rows) {
+      if (!locationMetaByLocation.has(row.location)) {
+        locationMetaByLocation.set(row.location, {
+          worldName: row.worldName,
+          groupName: row.groupName || '',
+          worldId: row.worldId || ''
+        });
+      }
+    }
+    return locationMetaByLocation;
   }
 
   close() {

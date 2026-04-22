@@ -1,6 +1,5 @@
 import { CacheStore } from './cacheStore.js';
-import { buildIndex } from './indexBuilder.js';
-import { clipSessionToRange, sessionIntersectsRange, toDateRangeMs } from './dateRange.js';
+import { toDateRangeMs } from './dateRange.js';
 import {
   calculateOverlapMs,
   calculatePeakOccupancy,
@@ -9,6 +8,7 @@ import {
 } from './overlap.js';
 import { parseLocationHost } from './locationHost.js';
 import { SqliteReadRepository } from './sqliteReadRepository.js';
+import { buildNormalizedSessions } from './sessionWindowBuilder.js';
 
 function groupByLocation(sessions) {
   const map = new Map();
@@ -38,12 +38,45 @@ function summarizeLocationOverlap(listA, listB) {
   };
 }
 
+function uniqueLocationsFromInputs({ localRows = [], feedGpsRows = [], feedOnlineOfflineRows = [] }) {
+  const values = new Set();
+  for (const row of localRows) {
+    if (row.location) {
+      values.add(row.location);
+    }
+  }
+  for (const row of feedGpsRows) {
+    if (row.location) {
+      values.add(row.location);
+    }
+    if (row.previousLocation) {
+      values.add(row.previousLocation);
+    }
+  }
+  for (const row of feedOnlineOfflineRows) {
+    if (row.location) {
+      values.add(row.location);
+    }
+  }
+  return Array.from(values);
+}
+
+function buildDisplayNameMap(baseMap, sessions = []) {
+  const map = new Map(baseMap);
+  for (const session of sessions) {
+    if (session?.userId && session?.displayName && !map.has(session.userId)) {
+      map.set(session.userId, session.displayName);
+    }
+  }
+  return map;
+}
+
 export class InsightsService {
   constructor(dbPath, { repositoryFactory = (target) => new SqliteReadRepository(target) } = {}) {
     this.dbPath = dbPath;
     this.repository = repositoryFactory(dbPath);
     this.cache = new CacheStore();
-    this.index = null;
+    this.loadedAt = null;
   }
 
   reload() {
@@ -51,82 +84,119 @@ export class InsightsService {
     return this.refreshMeta();
   }
 
-  ensureReady() {
-    if (!this.index) {
-      this.index = buildIndex(this.dbPath);
-    }
-  }
-
   refreshMeta() {
     const meta = this.repository.getMeta();
     this.cache.setMeta(meta);
+    this.loadedAt = new Date().toISOString();
     return this.getMeta();
   }
 
   clearAnalysisCaches() {
-    this.index = null;
     this.cache.clearAnalysis();
   }
 
   getMeta() {
     const meta = this.cache.getMeta() || this.repository.getMeta();
     this.cache.setMeta(meta);
-    const idx = this.index;
     return {
       dbPath: meta.dbPath,
-      loadedAt: idx?.loadedAt || null,
+      loadedAt: this.loadedAt,
       selfUserId: meta.selfUserId,
       selfDisplayName: meta.selfDisplayName,
       friendTable: meta.friendTable,
       friendCount: meta.friendList.length,
-      sessionCount: idx?.sessions.length || 0,
-      userCount: idx?.byUser.size || 0,
-      locationCount: idx?.byLocation.size || 0,
+      sessionCount: 0,
+      userCount: 0,
+      locationCount: 0,
       friends: meta.friendList
     };
   }
 
-  getFilteredUserSessions(userId, fromMs, toMs) {
-    this.ensureReady();
-    const base = this.index.byUser.get(userId) || [];
-    const filtered = [];
-    for (const session of base) {
-      if (!sessionIntersectsRange(session, fromMs, toMs)) {
-        continue;
-      }
-      const clipped = clipSessionToRange(session, fromMs, toMs);
-      if (clipped) {
-        filtered.push(clipped);
-      }
+  getAnalysisMeta() {
+    const meta = this.cache.getMeta() || this.repository.getMeta();
+    this.cache.setMeta(meta);
+    return meta;
+  }
+
+  getCurrentDisplayNameMap(meta = this.getAnalysisMeta()) {
+    const map = new Map(meta.friendList.map((row) => [row.userId, row.displayName]));
+    map.set(meta.selfUserId, meta.selfDisplayName);
+    return map;
+  }
+
+  getUserSessions(userId, { fromMs, toMs }) {
+    const key = `user:${this.dbPath}:${userId}:${fromMs ?? 'null'}:${toMs ?? 'null'}`;
+    const cached = this.cache.getSessionWindow(key);
+    if (cached) {
+      return cached;
     }
-    return filtered;
+
+    const meta = this.getAnalysisMeta();
+    const inputs = this.repository.getSessionInputsForUsers([userId], { toMs });
+    const locationMetaByLocation = this.repository.getLocationMetadata(uniqueLocationsFromInputs(inputs));
+    const sessions = buildNormalizedSessions({
+      ...inputs,
+      observedUntilMs: meta.observedUntilMs,
+      fromMs,
+      toMs,
+      currentDisplayNameMap: this.getCurrentDisplayNameMap(meta),
+      locationMetaByLocation,
+      locationParseCache: this.cache.locationParses
+    });
+    this.cache.setSessionWindow(key, sessions);
+    return sessions;
+  }
+
+  getLocationSessions(locations, { fromMs, toMs, excludeUserIds = [], includeUserIds = null } = {}) {
+    const key = `location:${this.dbPath}:${locations.join('|')}:${excludeUserIds.join('|')}:${includeUserIds ? includeUserIds.join('|') : 'all'}:${fromMs ?? 'null'}:${toMs ?? 'null'}`;
+    const cached = this.cache.getSessionWindow(key);
+    if (cached) {
+      return cached;
+    }
+
+    const meta = this.getAnalysisMeta();
+    const inputs = this.repository.getSessionInputsForLocations(locations, {
+      toMs,
+      excludeUserIds,
+      includeUserIds
+    });
+    const locationMetaByLocation = this.repository.getLocationMetadata(uniqueLocationsFromInputs(inputs));
+    const sessions = buildNormalizedSessions({
+      ...inputs,
+      observedUntilMs: meta.observedUntilMs,
+      fromMs,
+      toMs,
+      currentDisplayNameMap: this.getCurrentDisplayNameMap(meta),
+      locationMetaByLocation,
+      locationParseCache: this.cache.locationParses
+    });
+    this.cache.setSessionWindow(key, sessions);
+    return sessions;
   }
 
   getAcquaintances({ from, to, limit = 50 } = {}) {
-    this.ensureReady();
-    const idx = this.index;
+    const meta = this.getAnalysisMeta();
     const { fromMs, toMs } = toDateRangeMs({ from, to });
 
-    const selfSessions = this.getFilteredUserSessions(idx.selfUserId, fromMs, toMs);
+    const selfSessions = this.getUserSessions(meta.selfUserId, { fromMs, toMs });
     const selfByLocation = groupByLocation(selfSessions);
+    const candidateSessions = this.getLocationSessions(Array.from(selfByLocation.keys()), {
+      fromMs,
+      toMs,
+      excludeUserIds: [meta.selfUserId, ...meta.friendSet]
+    });
+    const candidateByLocation = groupByLocation(candidateSessions);
 
     const agg = new Map();
 
     for (const [location, mySessions] of selfByLocation.entries()) {
-      const locationSessions = (idx.byLocation.get(location) || []).filter((item) =>
-        sessionIntersectsRange(item, fromMs, toMs)
-      );
+      const locationSessions = candidateByLocation.get(location) || [];
       const byOther = new Map();
       for (const row of locationSessions) {
-        if (row.userId === idx.selfUserId) continue;
-        if (idx.friendSet.has(row.userId)) continue;
         if (!byOther.has(row.userId)) {
           byOther.set(row.userId, []);
         }
-        const clipped = clipSessionToRange(row, fromMs, toMs);
-        if (clipped) {
-          byOther.get(row.userId).push(clipped);
-        }
+        byOther.get(row.userId).push(row);
       }
 
       for (const [userId, sessions] of byOther.entries()) {
@@ -135,7 +205,7 @@ export class InsightsService {
 
         const prev = agg.get(userId) || {
           userId,
-          displayName: idx.displayNameMap.get(userId) || userId,
+          displayName: sessions[0]?.displayName || userId,
           meetCount: 0,
           overlapMs: 0
         };
@@ -161,36 +231,37 @@ export class InsightsService {
   }
 
   getTimeline({ userId, from, to, sessionLimit = null, companionLimit = 200 } = {}) {
-    this.ensureReady();
-    const idx = this.index;
-    const targetUserId = userId || idx.selfUserId;
+    const meta = this.getAnalysisMeta();
+    const targetUserId = userId || meta.selfUserId;
     const { fromMs, toMs } = toDateRangeMs({ from, to });
 
-    const sessions = this.getFilteredUserSessions(targetUserId, fromMs, toMs).sort((a, b) => b.startMs - a.startMs);
+    const sessions = this.getUserSessions(targetUserId, { fromMs, toMs }).slice().sort((a, b) => b.startMs - a.startMs);
     const targetByLocation = groupByLocation(sessions);
+    const candidateSessions = this.getLocationSessions(Array.from(targetByLocation.keys()), {
+      fromMs,
+      toMs,
+      excludeUserIds: [targetUserId]
+    });
+    const locationCandidateByLocation = groupByLocation(candidateSessions);
 
     const companionAgg = new Map();
 
-    for (const [location, targetSessions] of targetByLocation.entries()) {
-      const locationSessions = (idx.byLocation.get(location) || []).filter(
-        (item) => item.userId !== targetUserId && sessionIntersectsRange(item, fromMs, toMs)
-      );
+    for (const [location, targetSessionsAtLocation] of targetByLocation.entries()) {
+      const locationSessions = locationCandidateByLocation.get(location) || [];
       const byUser = new Map();
       for (const item of locationSessions) {
-        const clipped = clipSessionToRange(item, fromMs, toMs);
-        if (!clipped) continue;
         if (!byUser.has(item.userId)) {
           byUser.set(item.userId, []);
         }
-        byUser.get(item.userId).push(clipped);
+        byUser.get(item.userId).push(item);
       }
 
       for (const [otherId, otherSessions] of byUser.entries()) {
-        const overlapMs = calculateOverlapMs(targetSessions, otherSessions);
+        const overlapMs = calculateOverlapMs(targetSessionsAtLocation, otherSessions);
         if (overlapMs <= 0) continue;
         const prev = companionAgg.get(otherId) || {
           userId: otherId,
-          displayName: idx.displayNameMap.get(otherId) || otherId,
+          displayName: otherSessions[0]?.displayName || otherId,
           overlapMs: 0,
           meetCount: 0
         };
@@ -211,45 +282,43 @@ export class InsightsService {
 
     return {
       targetUserId,
-      targetDisplayName: idx.displayNameMap.get(targetUserId) || targetUserId,
+      targetDisplayName: this.getCurrentDisplayNameMap(meta).get(targetUserId) || targetUserId,
       sessions: timelineSessions,
       companions
     };
   }
 
   getRelationshipTop({ userId, scope = 'friends', from, to, limit = 100 } = {}) {
-    this.ensureReady();
-    const idx = this.index;
     if (!userId) {
       throw new Error('userId is required');
     }
 
+    const meta = this.getAnalysisMeta();
     const { fromMs, toMs } = toDateRangeMs({ from, to });
-    const targetSessions = this.getFilteredUserSessions(userId, fromMs, toMs);
+    const targetSessions = this.getUserSessions(userId, { fromMs, toMs });
     const targetByLocation = groupByLocation(targetSessions);
 
     const friendsOnly = scope !== 'all';
+    const candidateSessions = this.getLocationSessions(Array.from(targetByLocation.keys()), {
+      fromMs,
+      toMs,
+      excludeUserIds: friendsOnly ? [] : [userId, meta.selfUserId],
+      includeUserIds: friendsOnly
+        ? Array.from(meta.friendSet).filter((otherId) => otherId !== userId && otherId !== meta.selfUserId)
+        : null
+    });
+    const candidateByLocation = groupByLocation(candidateSessions);
 
     const agg = new Map();
     for (const [location, targetLocSessions] of targetByLocation.entries()) {
-      const locationSessions = (idx.byLocation.get(location) || []).filter(
-        (item) => item.userId !== userId && sessionIntersectsRange(item, fromMs, toMs)
-      );
+      const locationSessions = candidateByLocation.get(location) || [];
 
       const byUser = new Map();
       for (const session of locationSessions) {
-        if (session.userId === idx.selfUserId) {
-          continue;
-        }
-        if (friendsOnly && !idx.friendSet.has(session.userId)) {
-          continue;
-        }
-        const clipped = clipSessionToRange(session, fromMs, toMs);
-        if (!clipped) continue;
         if (!byUser.has(session.userId)) {
           byUser.set(session.userId, []);
         }
-        byUser.get(session.userId).push(clipped);
+        byUser.get(session.userId).push(session);
       }
 
       for (const [otherId, otherSessions] of byUser.entries()) {
@@ -257,10 +326,10 @@ export class InsightsService {
         if (!summary) continue;
         const prev = agg.get(otherId) || {
           userId: otherId,
-          displayName: idx.displayNameMap.get(otherId) || otherId,
+          displayName: otherSessions[0]?.displayName || otherId,
           overlapMs: 0,
           meetCount: 0,
-          isFriend: idx.friendSet.has(otherId)
+          isFriend: meta.friendSet.has(otherId)
         };
         prev.overlapMs += summary.overlapMs;
         prev.meetCount += 1;
@@ -280,24 +349,31 @@ export class InsightsService {
   }
 
   getRelationshipPair({ userIdA, userIdB, from, to } = {}) {
-    this.ensureReady();
-    const idx = this.index;
     if (!userIdA || !userIdB) {
       throw new Error('userIdA and userIdB are required');
     }
 
+    const meta = this.getAnalysisMeta();
     const { fromMs, toMs } = toDateRangeMs({ from, to });
-    const sessionsA = this.getFilteredUserSessions(userIdA, fromMs, toMs);
-    const sessionsB = this.getFilteredUserSessions(userIdB, fromMs, toMs);
+    const sessionsA = this.getUserSessions(userIdA, { fromMs, toMs });
+    const sessionsB = this.getUserSessions(userIdB, { fromMs, toMs });
 
     const aByLocation = groupByLocation(sessionsA);
     const bByLocation = groupByLocation(sessionsB);
 
     const selfSessions =
-      idx.selfUserId === userIdA || idx.selfUserId === userIdB
+      meta.selfUserId === userIdA || meta.selfUserId === userIdB
         ? []
-        : this.getFilteredUserSessions(idx.selfUserId, fromMs, toMs);
+        : this.getUserSessions(meta.selfUserId, { fromMs, toMs });
     const selfByLocation = groupByLocation(selfSessions);
+    const overlappingLocations = Array.from(aByLocation.keys()).filter((location) => bByLocation.has(location));
+    const locationSessions = this.getLocationSessions(overlappingLocations, { fromMs, toMs });
+    const locationSessionsByLocation = groupByLocation(locationSessions);
+    const displayNameMap = buildDisplayNameMap(this.getCurrentDisplayNameMap(meta), [
+      ...sessionsA,
+      ...sessionsB,
+      ...locationSessions
+    ]);
 
     const records = [];
 
@@ -312,40 +388,26 @@ export class InsightsService {
         continue;
       }
 
-      const locationSessions = (idx.byLocation.get(location) || []).filter((item) =>
-        sessionIntersectsRange(item, fromMs, toMs)
-      );
-      const peakOccupancy = calculatePeakOccupancy(locationSessions);
-      const host = parseLocationHost(location, idx.displayNameMap);
+      const peakOccupancy = calculatePeakOccupancy(locationSessionsByLocation.get(location) || []);
+      const host = parseLocationHost(location, displayNameMap);
 
       const selfPresent =
-        idx.selfUserId === userIdA ||
-        idx.selfUserId === userIdB ||
+        meta.selfUserId === userIdA ||
+        meta.selfUserId === userIdB ||
         isSelfPresentInSegments(selfByLocation.get(location) || [], summary.segments);
 
-      const meta = idx.locationMeta.get(location) || {
-        worldName: location,
-        groupName: '',
-        worldId: ''
-      };
-      const details = idx.locationDetailsByLocation.get(location) || {
-        accessType: '',
-        accessTypeName: '',
-        region: '',
-        groupId: null,
-        groupAccessType: null
-      };
+      const sampleSession = aLoc[0] || bLoc[0];
 
       records.push({
         location,
-        worldId: meta.worldId || '',
-        worldName: meta.worldName || location,
-        groupName: meta.groupName || '',
-        accessType: details.accessType,
-        accessTypeName: details.accessTypeName,
-        region: details.region,
-        groupId: details.groupId,
-        groupAccessType: details.groupAccessType,
+        worldId: sampleSession?.worldId || '',
+        worldName: sampleSession?.worldName || location,
+        groupName: sampleSession?.groupName || '',
+        accessType: sampleSession?.accessType || '',
+        accessTypeName: sampleSession?.accessTypeName || '',
+        region: sampleSession?.region || '',
+        groupId: sampleSession?.groupId || null,
+        groupAccessType: sampleSession?.groupAccessType || null,
         overlapMs: summary.overlapMs,
         overlapStartAt: new Date(summary.overlapStartMs).toISOString(),
         overlapEndAt: new Date(summary.overlapEndMs).toISOString(),
@@ -365,8 +427,8 @@ export class InsightsService {
     return {
       userIdA,
       userIdB,
-      displayNameA: idx.displayNameMap.get(userIdA) || userIdA,
-      displayNameB: idx.displayNameMap.get(userIdB) || userIdB,
+      displayNameA: displayNameMap.get(userIdA) || userIdA,
+      displayNameB: displayNameMap.get(userIdB) || userIdB,
       totalOverlapMs: records.reduce((sum, row) => sum + row.overlapMs, 0),
       records
     };
