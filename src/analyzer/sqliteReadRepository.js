@@ -37,6 +37,15 @@ function buildPlaceholders(list) {
   return list.map(() => '?').join(', ');
 }
 
+function extractWorldId(location) {
+  const value = String(location || '');
+  const separator = value.indexOf(':');
+  if (separator < 0) {
+    return value;
+  }
+  return value.slice(0, separator);
+}
+
 function runAll(db, sql, params = []) {
   return db.prepare(sql).all(...params);
 }
@@ -406,6 +415,14 @@ export class SqliteReadRepository {
       return new Map();
     }
 
+    const worldIds = Array.from(new Set(locationList.map(extractWorldId).filter(Boolean)));
+    const clauses = [`location IN (${buildPlaceholders(locationList)})`];
+    const params = [...locationList];
+    if (worldIds.length > 0) {
+      clauses.push(`world_id IN (${buildPlaceholders(worldIds)})`);
+      params.push(...worldIds);
+    }
+
     const rows = runAll(
       this.db,
       `
@@ -416,13 +433,14 @@ export class SqliteReadRepository {
         world_id AS worldId,
         created_at AS createdAt
       FROM gamelog_location
-      WHERE location IN (${buildPlaceholders(locationList)})
+      WHERE ${clauses.join('\n        OR ')}
       ORDER BY created_at DESC
       `,
-      locationList
+      params
     );
 
     const locationMetaByLocation = new Map();
+    const fallbackMetaByWorldId = new Map();
     for (const row of rows) {
       if (!locationMetaByLocation.has(row.location)) {
         locationMetaByLocation.set(row.location, {
@@ -431,6 +449,28 @@ export class SqliteReadRepository {
           worldId: row.worldId || ''
         });
       }
+      if (row.worldId && row.worldName && !fallbackMetaByWorldId.has(row.worldId)) {
+        fallbackMetaByWorldId.set(row.worldId, {
+          worldName: row.worldName,
+          worldId: row.worldId
+        });
+      }
+    }
+
+    for (const location of locationList) {
+      if (locationMetaByLocation.has(location)) {
+        continue;
+      }
+      const worldId = extractWorldId(location);
+      const fallback = fallbackMetaByWorldId.get(worldId);
+      if (!fallback) {
+        continue;
+      }
+      locationMetaByLocation.set(location, {
+        worldName: fallback.worldName,
+        groupName: '',
+        worldId: fallback.worldId
+      });
     }
     return locationMetaByLocation;
   }

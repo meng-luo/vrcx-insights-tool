@@ -1,3 +1,15 @@
+function extractWorldId(location) {
+  const value = String(location || '').trim();
+  if (!value) {
+    return '';
+  }
+  const separator = value.indexOf(':');
+  if (separator < 0) {
+    return value;
+  }
+  return value.slice(0, separator);
+}
+
 export function getDisplayNameLabel({ displayName, userId, prefix = '' }) {
   return `${prefix}${displayName || userId || '未知用户'}`;
 }
@@ -10,7 +22,7 @@ export function getDisplayNameTooltip({ displayName, userId }) {
 }
 
 export function getWorldLabel({ worldName, location }) {
-  return worldName || location || '未知世界';
+  return worldName || extractWorldId(location) || location || '未知世界';
 }
 
 const ACCESS_TYPE_LABELS = {
@@ -47,8 +59,9 @@ export function getWorldMetaLabel({ accessTypeName, accessType, region }) {
 }
 
 export function getWorldTooltip({ worldName, location }) {
-  if (!worldName || !location) {
+  if (!location) {
     return '';
   }
-  return location;
+  const label = getWorldLabel({ worldName, location });
+  return label !== location ? location : '';
 }

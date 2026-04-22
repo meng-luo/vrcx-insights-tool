@@ -27,5 +27,8 @@ describe('electron preload runtime', () => {
       'openExternalUrl: (url) => ipcRenderer.invoke(\'app:open-external-url\', { url })'
     );
     expect(preloadSource).toContain('openDevTools: () => ipcRenderer.invoke(\'app:open-devtools\')');
+    expect(preloadSource).toContain(
+      'resolveWorldNames: (worldIds = []) => ipcRenderer.invoke(\'app:resolve-world-names\', { worldIds })'
+    );
   });
 });

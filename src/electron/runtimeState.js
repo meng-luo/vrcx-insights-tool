@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { InsightsService } from '../analyzer/insightsService.js';
+import { WorldNameResolver } from './worldNameResolver.js';
 
 export function getConfigFilePath(userDataPath) {
   return path.join(userDataPath, 'data.json');
@@ -73,7 +74,8 @@ export class ElectronAppRuntime {
     fsImpl = fs,
     dialogImpl = null,
     shellImpl = null,
-    serviceFactory = (dbPath) => new InsightsService(dbPath)
+    serviceFactory = (dbPath) => new InsightsService(dbPath),
+    worldNameResolverFactory = () => new WorldNameResolver()
   }) {
     this.userDataPath = userDataPath;
     this.appDataPath = appDataPath;
@@ -83,6 +85,7 @@ export class ElectronAppRuntime {
     this.dialog = dialogImpl;
     this.shell = shellImpl;
     this.serviceFactory = serviceFactory;
+    this.worldNameResolver = worldNameResolverFactory();
     this.configPath = getConfigFilePath(userDataPath);
     this.service = null;
     this.state = createEmptyState({
@@ -235,5 +238,12 @@ export class ElectronAppRuntime {
     }
     webContents.openDevTools({ mode: 'detach' });
     return { ok: true };
+  }
+
+  async resolveWorldNames(worldIds = []) {
+    if (!this.worldNameResolver || typeof this.worldNameResolver.resolveWorldNames !== 'function') {
+      return {};
+    }
+    return this.worldNameResolver.resolveWorldNames(worldIds);
   }
 }

@@ -23,6 +23,7 @@ const CHANNEL_HANDLERS = {
   'app:update-data-directory': (_event, query, runtime) => runtime.updateDataDirectory(query?.dataDir),
   'app:open-external-url': (_event, query, runtime) => runtime.openExternalUrl(query?.url),
   'app:open-devtools': (event, _query, runtime) => runtime.openDevTools(getOwnerWindow(event)),
+  'app:resolve-world-names': (_event, query, runtime) => runtime.resolveWorldNames(query?.worldIds || []),
   'insights:get-meta': (_event, query, runtime) => runMetaQuery(getService(runtime), query),
   'insights:reload': (_event, _query, runtime) => runtime.reload(),
   'insights:get-acquaintances': (_event, query, runtime) => runAcquaintancesQuery(getService(runtime), query),

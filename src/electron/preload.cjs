@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('vrcxInsights', {
   updateDataDirectory: (dataDir) => ipcRenderer.invoke('app:update-data-directory', { dataDir }),
   openExternalUrl: (url) => ipcRenderer.invoke('app:open-external-url', { url }),
   openDevTools: () => ipcRenderer.invoke('app:open-devtools'),
+  resolveWorldNames: (worldIds = []) => ipcRenderer.invoke('app:resolve-world-names', { worldIds }),
   getMeta: () => ipcRenderer.invoke('insights:get-meta'),
   reload: () => ipcRenderer.invoke('insights:reload'),
   getAcquaintances: (query = {}) => ipcRenderer.invoke('insights:get-acquaintances', query),

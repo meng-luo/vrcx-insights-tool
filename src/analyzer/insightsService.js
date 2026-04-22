@@ -401,7 +401,7 @@ export class InsightsService {
       records.push({
         location,
         worldId: sampleSession?.worldId || '',
-        worldName: sampleSession?.worldName || location,
+        worldName: sampleSession?.worldName || '',
         groupName: sampleSession?.groupName || '',
         accessType: sampleSession?.accessType || '',
         accessTypeName: sampleSession?.accessTypeName || '',

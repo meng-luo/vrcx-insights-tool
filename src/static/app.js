@@ -52,6 +52,20 @@ function getHostTooltip(item) {
   return item.hostUserId;
 }
 
+function collectMissingWorldIds(rows = []) {
+  const worldIds = new Set();
+  for (const row of rows) {
+    const worldName = typeof row?.worldName === 'string' ? row.worldName.trim() : '';
+    const worldId = typeof row?.worldId === 'string' ? row.worldId.trim() : '';
+    const location = typeof row?.location === 'string' ? row.location.trim() : '';
+    const unresolved = !worldName || worldName === worldId || worldName === location;
+    if (unresolved && worldId) {
+      worldIds.add(row.worldId);
+    }
+  }
+  return Array.from(worldIds);
+}
+
 createApp({
   template: `
     <div class="page-shell">
@@ -776,6 +790,24 @@ createApp({
       ensureSelections();
     }
 
+    async function hydrateMissingWorldNames(rows) {
+      const nextRows = Array.isArray(rows) ? rows.map((row) => ({ ...row })) : [];
+      const worldIds = collectMissingWorldIds(nextRows);
+      if (worldIds.length === 0) {
+        return nextRows;
+      }
+
+      const resolvedNames = await getInsightsApi().resolveWorldNames(worldIds);
+      for (const row of nextRows) {
+        const worldName = typeof row.worldName === 'string' ? row.worldName.trim() : '';
+        const unresolved = !worldName || worldName === row.worldId || worldName === row.location;
+        if (unresolved && row.worldId && resolvedNames[row.worldId]) {
+          row.worldName = resolvedNames[row.worldId];
+        }
+      }
+      return nextRows;
+    }
+
     async function loadAcquaintances(options = {}) {
       if (!canAnalyze.value) {
         return;
@@ -821,7 +853,7 @@ createApp({
         qs.set('companionPage', state.pagination.timelineCompanions.page);
         qs.set('companionPageSize', state.pagination.timelineCompanions.pageSize);
         const data = await getInsightsApi().getTimeline(toQueryObject(qs));
-        state.timeline.sessions = data.sessions || [];
+        state.timeline.sessions = await hydrateMissingWorldNames(data.sessions || []);
         state.timeline.sessionsTotal = data.sessionsTotal || 0;
         state.timeline.companions = data.companions || [];
         state.timeline.companionsTotal = data.companionsTotal || 0;
@@ -886,7 +918,7 @@ createApp({
           displayNameA: data.displayNameA || '',
           displayNameB: data.displayNameB || '',
           totalOverlapMs: data.totalOverlapMs || 0,
-          records: data.records || [],
+          records: await hydrateMissingWorldNames(data.records || []),
           recordsTotal: data.total || 0
         };
         state.pagination.pair.page = data.page || state.pagination.pair.page;

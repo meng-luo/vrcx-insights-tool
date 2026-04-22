@@ -192,4 +192,32 @@ describe('electron runtime state', () => {
     expect(openDevTools).toHaveBeenCalledWith({ mode: 'detach' });
     expect(result).toEqual({ ok: true });
   });
+
+  test('resolves missing world names through the injected resolver', async () => {
+    const resolveWorldNames = vi.fn(async () => ({
+      wrld_api_only: 'API Only World'
+    }));
+    const runtime = new ElectronAppRuntime({
+      userDataPath: '/tmp/vrcx-user',
+      appDataPath: '/tmp/app-data',
+      platform: 'darwin',
+      fsImpl: {
+        existsSync: vi.fn(() => false),
+        mkdirSync: vi.fn(),
+        writeFileSync: vi.fn(),
+        readFileSync: vi.fn(() => {
+          throw new Error('missing');
+        })
+      },
+      serviceFactory: vi.fn(),
+      worldNameResolverFactory: () => ({
+        resolveWorldNames
+      })
+    });
+
+    await expect(runtime.resolveWorldNames(['wrld_api_only'])).resolves.toEqual({
+      wrld_api_only: 'API Only World'
+    });
+    expect(resolveWorldNames).toHaveBeenCalledWith(['wrld_api_only']);
+  });
 });

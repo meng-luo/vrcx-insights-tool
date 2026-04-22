@@ -177,6 +177,77 @@ describe('electron query integration', () => {
     expect(pair.displayNameB).toBe('dango_remilia');
   });
 
+  test('falls back to world names from the same world id when a specific hidden instance location is missing', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vrcx-insights-'));
+    const dbPath = path.join(tempDir, 'fixture-worldid-fallback.sqlite3');
+    createFixtureDb(dbPath);
+
+    execFileSync('sqlite3', [
+      dbPath,
+      `
+      INSERT INTO gamelog_location (created_at, location, world_id, world_name, time, group_name) VALUES
+        ('2026-04-18T08:00:00.000Z', 'wrld_hidden:11111~hidden(usr_old_host)~region(us)', 'wrld_hidden', 'Hidden World', 1800000, '');
+
+      INSERT INTO gamelog_join_leave (created_at, type, display_name, location, user_id, time) VALUES
+        ('2026-04-18T09:00:00.000Z', 'OnPlayerLeft', 'Target User', 'wrld_hidden:74618~hidden(usr_701a11fa-ac73-46fb-aaed-9d1f5e6fa3ef)~region(us)', 'usr_target_hidden', 1800000);
+      `
+    ]);
+
+    const service = createService(dbPath);
+
+    const timeline = runTimelineQuery(service, {
+      userId: 'usr_target_hidden',
+      from: '2026-04-18',
+      to: '2026-04-19'
+    });
+
+    expect(
+      timeline.sessions.find(
+        (row) =>
+          row.location ===
+          'wrld_hidden:74618~hidden(usr_701a11fa-ac73-46fb-aaed-9d1f5e6fa3ef)~region(us)'
+      )?.worldName
+    ).toBe('Hidden World');
+  });
+
+  test('preserves empty world names for unknown locations so API hydration can resolve them later', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vrcx-insights-'));
+    const dbPath = path.join(tempDir, 'fixture-unknown-world.sqlite3');
+    createFixtureDb(dbPath);
+
+    execFileSync('sqlite3', [
+      dbPath,
+      `
+      INSERT INTO gamelog_join_leave (created_at, type, display_name, location, user_id, time) VALUES
+        ('2026-04-19T09:00:00.000Z', 'OnPlayerLeft', 'Self', 'wrld_api_only:60241~hidden(usr_host)~region(jp)', 'usr_self', 1800000),
+        ('2026-04-19T09:00:00.000Z', 'OnPlayerLeft', 'Friend A', 'wrld_api_only:60241~hidden(usr_host)~region(jp)', 'usr_friend_a', 1200000);
+      `
+    ]);
+
+    const service = createService(dbPath);
+
+    const timeline = runTimelineQuery(service, {
+      userId: 'usr_self',
+      from: '2026-04-19',
+      to: '2026-04-20'
+    });
+    expect(
+      timeline.sessions.find((row) => row.location === 'wrld_api_only:60241~hidden(usr_host)~region(jp)')
+        ?.worldName
+    ).toBe('');
+
+    const pair = runRelationshipPairQuery(service, {
+      userIdA: 'usr_self',
+      userIdB: 'usr_friend_a',
+      from: '2026-04-19',
+      to: '2026-04-20'
+    });
+    expect(
+      pair.records.find((row) => row.location === 'wrld_api_only:60241~hidden(usr_host)~region(jp)')
+        ?.worldName
+    ).toBe('');
+  });
+
   test('timeline changes with time range and is not capped to 300 by default', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vrcx-insights-'));
     const dbPath = path.join(tempDir, 'fixture-large.sqlite3');

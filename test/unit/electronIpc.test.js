@@ -33,6 +33,7 @@ describe('registerInsightsIpc', () => {
       'app:update-data-directory',
       'app:open-external-url',
       'app:open-devtools',
+      'app:resolve-world-names',
       'insights:get-meta',
       'insights:reload',
       'insights:get-acquaintances',

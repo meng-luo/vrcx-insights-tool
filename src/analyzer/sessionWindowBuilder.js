@@ -30,6 +30,8 @@ function pushRawSession(rawSessions, row, location, endMs, durationMs) {
     userId,
     displayName,
     location,
+    worldName: row.worldName || '',
+    groupName: row.groupName || '',
     startMs: Math.max(0, endMs - durationMs),
     endMs,
     source: row.source || 'local'
@@ -65,6 +67,12 @@ function mergeRawSessions(rawSessions) {
       }
       if (!prev.displayName && row.displayName) {
         prev.displayName = row.displayName;
+      }
+      if (!prev.worldName && row.worldName) {
+        prev.worldName = row.worldName;
+      }
+      if (!prev.groupName && row.groupName) {
+        prev.groupName = row.groupName;
       }
       if (prev.source !== row.source) {
         prev.source = 'merged';
@@ -117,6 +125,8 @@ export function buildNormalizedSessions({
       userId: row.userId,
       displayName: row.displayName,
       location: row.location,
+      worldName: row.worldName,
+      groupName: row.groupName,
       time: row.time,
       source: 'feed'
     });
@@ -128,6 +138,8 @@ export function buildNormalizedSessions({
       userId: row.userId,
       displayName: row.displayName,
       location: row.location,
+      worldName: row.worldName,
+      groupName: row.groupName,
       previousLocation: row.previousLocation,
       time: row.time,
       source: 'feed'
@@ -158,6 +170,8 @@ export function buildNormalizedSessions({
           userId: row.userId,
           displayName: row.displayName || row.userId,
           location: row.location,
+          worldName: row.worldName || '',
+          groupName: row.groupName || '',
           startMs: createdAtMs,
           source: 'feed'
         });
@@ -178,6 +192,8 @@ export function buildNormalizedSessions({
         userId: row.userId,
         displayName: row.displayName || row.userId,
         location: row.location,
+        worldName: row.worldName || '',
+        groupName: row.groupName || '',
         startMs: createdAtMs,
         source: 'feed'
       });
@@ -190,6 +206,8 @@ export function buildNormalizedSessions({
         userId: row.userId,
         displayName: row.displayName,
         location: row.location,
+        worldName: row.worldName || '',
+        groupName: row.groupName || '',
         startMs: row.startMs,
         endMs: observedUntilMs,
         source: row.source || 'feed'
@@ -216,8 +234,8 @@ export function buildNormalizedSessions({
         userId: row.userId,
         displayName: displayNameMap.get(row.userId) || row.displayName || row.userId,
         location: row.location,
-        worldName: meta.worldName || row.location,
-        groupName: meta.groupName || '',
+        worldName: meta.worldName || row.worldName || '',
+        groupName: meta.groupName || row.groupName || '',
         worldId: meta.worldId || details.worldId || extractWorldId(row.location),
         accessType: details.accessType,
         accessTypeName: details.accessTypeName,
