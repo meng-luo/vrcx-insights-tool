@@ -719,7 +719,6 @@ createApp({
       await loadAppState();
       if (!state.appState.requiresOnboarding) {
         await loadMeta();
-        await applyAllViews();
       } else {
         resetAnalysisState();
       }
@@ -963,6 +962,9 @@ createApp({
         ElMessage.error(`加载失败: ${error.message}`);
       } finally {
         state.bootstrapping = false;
+        if (!state.appState.requiresOnboarding) {
+          await applyAllViews();
+        }
       }
     });
 

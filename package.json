@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "electron --inspect=5858 src/electron/main.js",
-    "dev": "electron src/electron/main.js",
+    "start": "electron src/electron/main.js",
+    "dev": "electron --inspect=5858 src/electron/main.js",
     "build:win": "electron-builder --win nsis portable --x64",
     "release:win": "electron-builder --win nsis portable --x64 --publish never",
     "test": "vitest run",
