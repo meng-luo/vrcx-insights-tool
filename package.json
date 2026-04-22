@@ -7,7 +7,7 @@
     "start": "electron src/electron/main.js",
     "dev": "electron src/electron/main.js",
     "build:win": "electron-builder --win nsis portable --x64",
-    "release:win": "npm run build:win",
+    "release:win": "electron-builder --win nsis portable --x64 --publish never",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration"
@@ -22,15 +22,14 @@
     "vitest": "^2.1.8"
   },
   "build": {
-    "appId": "com.vrcxinsights.app",
+    "appId": "com.mengluo.vrcx-insights-tool",
     "productName": "VRCX Insights Tool",
     "directories": {
-      "output": "release",
+      "output": "dist",
       "buildResources": "build"
     },
     "files": [
-      "dist/**/*",
-      "src/electron/**/*",
+      "src/**/*",
       "package.json"
     ],
     "extraMetadata": {
@@ -53,16 +52,15 @@
           ]
         }
       ],
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-${name}.${ext}"
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-setup.${ext}"
     },
     "portable": {
-      "artifactName": "${productName}-Portable-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-portable.${ext}"
     }
   }
 }
