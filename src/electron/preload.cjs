@@ -12,5 +12,7 @@ contextBridge.exposeInMainWorld('vrcxInsights', {
   getAcquaintances: (query = {}) => ipcRenderer.invoke('insights:get-acquaintances', query),
   getTimeline: (query = {}) => ipcRenderer.invoke('insights:get-timeline', query),
   getRelationshipTop: (query = {}) => ipcRenderer.invoke('insights:get-relationship-top', query),
+  getMutualFriends: (query = {}) => ipcRenderer.invoke('insights:get-mutual-friends', query),
+  getMutualFriendDetail: (query = {}) => ipcRenderer.invoke('insights:get-mutual-friend-detail', query),
   getRelationshipPair: (query = {}) => ipcRenderer.invoke('insights:get-relationship-pair', query)
 });

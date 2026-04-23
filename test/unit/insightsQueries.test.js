@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest';
 
 import {
   paginateCollection,
+  runMutualFriendDetailQuery,
+  runMutualFriendsQuery,
   runTimelineQuery
 } from '../../src/queries/insightsQueries.js';
 
@@ -38,5 +40,50 @@ describe('insights query helpers', () => {
     expect(out.pageSize).toBe(1);
     expect(out.sessionsTotal).toBe(8);
     expect(out.companionsTotal).toBe(1);
+  });
+
+  test('runMutualFriendsQuery paginates mutual friend leaderboard rows', () => {
+    const service = {
+      getMutualFriends() {
+        return {
+          rows: [
+            { userId: 'usr_friend_a', displayName: 'Friend A', mutualFriendCount: 3 },
+            { userId: 'usr_friend_b', displayName: 'Friend B', mutualFriendCount: 2 }
+          ]
+        };
+      }
+    };
+
+    const out = runMutualFriendsQuery(service, {
+      page: '2',
+      pageSize: '1'
+    });
+
+    expect(out.total).toBe(2);
+    expect(out.page).toBe(2);
+    expect(out.pageSize).toBe(1);
+    expect(out.rows).toEqual([
+      { userId: 'usr_friend_b', displayName: 'Friend B', mutualFriendCount: 2 }
+    ]);
+  });
+
+  test('runMutualFriendDetailQuery returns the clicked user detail rows', () => {
+    const service = {
+      getMutualFriendDetail({ userId }) {
+        return {
+          userId,
+          targetDisplayName: 'Friend A',
+          rows: [{ userId: 'usr_friend_c', displayName: 'Friend C' }]
+        };
+      }
+    };
+
+    const out = runMutualFriendDetailQuery(service, {
+      userId: 'usr_friend_a'
+    });
+
+    expect(out.userId).toBe('usr_friend_a');
+    expect(out.targetDisplayName).toBe('Friend A');
+    expect(out.rows).toEqual([{ userId: 'usr_friend_c', displayName: 'Friend C' }]);
   });
 });

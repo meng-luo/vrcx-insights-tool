@@ -50,4 +50,20 @@ describe('SqliteReadRepository', () => {
     expect(rows.every((row) => row.userId === 'usr_self')).toBe(true);
     repo.close();
   });
+
+  test('loads mutual graph rows for a target friend from VRCX cache tables', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vrcx-read-repo-'));
+    const dbPath = path.join(tempDir, 'fixture.sqlite3');
+    createFixtureDb(dbPath);
+
+    const repo = new SqliteReadRepository(dbPath);
+    const rows = repo.getMutualGraphRows('usr_friend_a');
+
+    expect(rows).toEqual([
+      { userId: 'usr_friend_b', displayName: 'Friend B', isFriend: true },
+      { userId: 'usr_friend_c', displayName: 'Friend C', isFriend: true },
+      { userId: 'usr_non_friend', displayName: 'usr_non_friend', isFriend: false }
+    ]);
+    repo.close();
+  });
 });

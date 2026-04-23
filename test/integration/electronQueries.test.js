@@ -8,6 +8,8 @@ import { InsightsService } from '../../src/analyzer/insightsService.js';
 import {
   runAcquaintancesQuery,
   runMetaQuery,
+  runMutualFriendDetailQuery,
+  runMutualFriendsQuery,
   runRelationshipPairQuery,
   runRelationshipTopQuery,
   runTimelineQuery
@@ -48,6 +50,12 @@ describe('electron query integration', () => {
     const top = runRelationshipTopQuery(service, { userId: 'usr_friend_a' });
     expect(Array.isArray(top.rows)).toBe(true);
 
+    const mutual = runMutualFriendsQuery(service, { userId: 'usr_friend_a' });
+    expect(Array.isArray(mutual.rows)).toBe(true);
+
+    const mutualDetail = runMutualFriendDetailQuery(service, { userId: 'usr_friend_a' });
+    expect(Array.isArray(mutualDetail.rows)).toBe(true);
+
     const pair = runRelationshipPairQuery(service, { userIdA: 'usr_friend_a', userIdB: 'usr_friend_b' });
     expect(Array.isArray(pair.records)).toBe(true);
     if (pair.records.length > 0) {
@@ -59,6 +67,56 @@ describe('electron query integration', () => {
       expect(row).toHaveProperty('accessTypeName');
       expect(row).toHaveProperty('region');
     }
+  });
+
+  test('returns leaderboard rows ranked by mutual friend counts from VRCX cached mutual graph data', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vrcx-insights-'));
+    const dbPath = path.join(tempDir, 'fixture-mutual.sqlite3');
+    createFixtureDb(dbPath);
+
+    const service = createService(dbPath);
+    const mutual = runMutualFriendsQuery(service, {
+      page: '1',
+      pageSize: '10'
+    });
+
+    expect(mutual.total).toBe(2);
+    expect(mutual.rows).toEqual([
+      {
+        userId: 'usr_friend_b',
+        displayName: 'Friend B',
+        mutualFriendCount: 3
+      },
+      {
+        userId: 'usr_friend_a',
+        displayName: 'Friend A',
+        mutualFriendCount: 2
+      }
+    ]);
+  });
+
+  test('returns my mutual friends with the clicked user from VRCX cached mutual graph data', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vrcx-insights-'));
+    const dbPath = path.join(tempDir, 'fixture-mutual-detail.sqlite3');
+    createFixtureDb(dbPath);
+
+    const service = createService(dbPath);
+    const detail = runMutualFriendDetailQuery(service, {
+      userId: 'usr_friend_a'
+    });
+
+    expect(detail.userId).toBe('usr_friend_a');
+    expect(detail.targetDisplayName).toBe('Friend A');
+    expect(detail.rows).toEqual([
+      {
+        userId: 'usr_friend_b',
+        displayName: 'Friend B'
+      },
+      {
+        userId: 'usr_friend_c',
+        displayName: 'Friend C'
+      }
+    ]);
   });
 
   test('includes invite and invite+ instances instead of filtering private-tagged real instances', () => {

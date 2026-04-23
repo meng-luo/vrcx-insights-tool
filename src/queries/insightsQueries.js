@@ -167,6 +167,28 @@ export function runRelationshipTopQuery(service, query = {}) {
   };
 }
 
+export function runMutualFriendsQuery(service, query = {}) {
+  const { page, pageSize } = query;
+  const data = service.getMutualFriends();
+  const paged = paginateCollection(data.rows, page, pageSize);
+
+  return {
+    ...data,
+    rows: paged.rows,
+    total: paged.total,
+    page: paged.page,
+    pageSize: paged.pageSize,
+    totalPages: paged.totalPages
+  };
+}
+
+export function runMutualFriendDetailQuery(service, query = {}) {
+  const { userId } = query;
+  return service.getMutualFriendDetail({
+    userId
+  });
+}
+
 export function runRelationshipPairQuery(service, query = {}) {
   const { from, to } = resolveDefaultRange(query);
   const { userIdA, userIdB, page, pageSize } = query;
@@ -187,4 +209,3 @@ export function runRelationshipPairQuery(service, query = {}) {
     totalPages: paged.totalPages
   };
 }
-

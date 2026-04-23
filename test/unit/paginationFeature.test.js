@@ -13,11 +13,12 @@ describe('pagination feature', () => {
     const appSource = fs.readFileSync(appJsPath, 'utf8');
     const cssSource = fs.readFileSync(stylesPath, 'utf8');
 
-    expect((appSource.match(/class="table-pagination"/g) || []).length).toBe(5);
+    expect((appSource.match(/class="table-pagination"/g) || []).length).toBe(6);
     expect(appSource).toContain('pagination: {');
     expect(appSource).toContain(':total="state.acquaintances.total"');
     expect(appSource).toContain(':total="state.timeline.sessionsTotal"');
     expect(appSource).toContain(':total="state.timeline.companionsTotal"');
+    expect(appSource).toContain(':total="state.mutualFriendsTotal"');
     expect(appSource).toContain(':total="state.relationshipPair.recordsTotal"');
     expect(appSource).toContain('await loadPaginationData(key)');
     expect(cssSource).toContain('.table-pagination');

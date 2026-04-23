@@ -39,6 +39,8 @@ describe('registerInsightsIpc', () => {
       'insights:get-acquaintances',
       'insights:get-timeline',
       'insights:get-relationship-top',
+      'insights:get-mutual-friends',
+      'insights:get-mutual-friend-detail',
       'insights:get-relationship-pair'
     ]);
   });

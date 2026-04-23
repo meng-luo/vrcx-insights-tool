@@ -114,6 +114,16 @@ export class SqliteReadRepository {
     if (!friendTable) {
       throw new Error('cannot find *_friend_log_current table');
     }
+    const mutualGraphFriendTable = findExistingTable(
+      this.db,
+      `${prefix}_mutual_graph_friends`,
+      '%_mutual_graph_friends'
+    );
+    const mutualGraphLinkTable = findExistingTable(
+      this.db,
+      `${prefix}_mutual_graph_links`,
+      '%_mutual_graph_links'
+    );
 
     const feedGpsTable = findExistingTable(this.db, `${prefix}_feed_gps`, '%_feed_gps');
     const feedOnlineOfflineTable = findExistingTable(
@@ -147,6 +157,8 @@ export class SqliteReadRepository {
       selfUserId,
       selfDisplayName,
       friendTable,
+      mutualGraphFriendTable,
+      mutualGraphLinkTable,
       feedGpsTable,
       feedOnlineOfflineTable,
       friendList,
@@ -297,6 +309,32 @@ export class SqliteReadRepository {
       feedGpsRows,
       feedOnlineOfflineRows
     };
+  }
+
+  getMutualGraphRows(userId) {
+    const meta = this.getMeta();
+    if (!userId || !meta.mutualGraphLinkTable) {
+      return [];
+    }
+
+    const displayNameMap = new Map(meta.friendList.map((row) => [row.userId, row.displayName]));
+    return runAll(
+      this.db,
+      `
+      SELECT mutual_id AS userId
+      FROM ${meta.mutualGraphLinkTable}
+      WHERE friend_id = ?
+      ORDER BY mutual_id ASC
+      `,
+      [userId]
+    ).map((row) => {
+      const mutualUserId = row.userId || '';
+      return {
+        userId: mutualUserId,
+        displayName: displayNameMap.get(mutualUserId) || mutualUserId,
+        isFriend: meta.friendSet.has(mutualUserId)
+      };
+    });
   }
 
   getSessionInputsForLocations(

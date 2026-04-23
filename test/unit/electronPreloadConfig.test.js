@@ -30,5 +30,11 @@ describe('electron preload runtime', () => {
     expect(preloadSource).toContain(
       'resolveWorldNames: (worldIds = []) => ipcRenderer.invoke(\'app:resolve-world-names\', { worldIds })'
     );
+    expect(preloadSource).toContain(
+      'getMutualFriends: (query = {}) => ipcRenderer.invoke(\'insights:get-mutual-friends\', query)'
+    );
+    expect(preloadSource).toContain(
+      'getMutualFriendDetail: (query = {}) => ipcRenderer.invoke(\'insights:get-mutual-friend-detail\', query)'
+    );
   });
 });

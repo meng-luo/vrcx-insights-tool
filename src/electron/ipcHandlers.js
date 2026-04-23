@@ -1,6 +1,8 @@
 import {
   runAcquaintancesQuery,
   runMetaQuery,
+  runMutualFriendDetailQuery,
+  runMutualFriendsQuery,
   runRelationshipPairQuery,
   runRelationshipTopQuery,
   runTimelineQuery
@@ -29,6 +31,9 @@ const CHANNEL_HANDLERS = {
   'insights:get-acquaintances': (_event, query, runtime) => runAcquaintancesQuery(getService(runtime), query),
   'insights:get-timeline': (_event, query, runtime) => runTimelineQuery(getService(runtime), query),
   'insights:get-relationship-top': (_event, query, runtime) => runRelationshipTopQuery(getService(runtime), query),
+  'insights:get-mutual-friends': (_event, query, runtime) => runMutualFriendsQuery(getService(runtime), query),
+  'insights:get-mutual-friend-detail': (_event, query, runtime) =>
+    runMutualFriendDetailQuery(getService(runtime), query),
   'insights:get-relationship-pair': (_event, query, runtime) => runRelationshipPairQuery(getService(runtime), query)
 };
 

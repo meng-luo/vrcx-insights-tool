@@ -349,6 +349,44 @@ createApp({
                 </el-card>
               </el-tab-pane>
 
+              <el-tab-pane label="共同好友排行" name="mutual">
+                <el-card class="panel-card relationship-query-card relationship-top-card" shadow="hover">
+                  <div class="section-title-row">
+                    <h2>共同好友排行</h2>
+                  </div>
+                  <div class="section-hint">
+                    推荐先从 VRCX 拉取最新的好友关系数据，再回到这里刷新查看。
+                  </div>
+
+                  <el-table
+                    :data="state.mutualFriendsRows"
+                    stripe
+                    v-loading="state.loading.mutualFriends"
+                    @row-click="showMutualFriendDetail"
+                  >
+                    <el-table-column label="昵称" min-width="240">
+                      <template #default="{ row }">
+                        <el-tooltip :content="getDisplayNameTooltip(row)" :disabled="!getDisplayNameTooltip(row)">
+                          <span class="hover-label">{{ getDisplayNameLabel(row) }}</span>
+                        </el-tooltip>
+                      </template>
+                    </el-table-column>
+                    <el-table-column prop="mutualFriendCount" label="共同好友数" width="120" />
+                  </el-table>
+                  <el-pagination
+                    class="table-pagination"
+                    background
+                    layout="total, sizes, prev, pager, next"
+                    :total="state.mutualFriendsTotal"
+                    :current-page="state.pagination.mutualFriends.page"
+                    :page-size="state.pagination.mutualFriends.pageSize"
+                    :page-sizes="pageSizeOptions"
+                    @current-change="(page) => handlePageChange('mutualFriends', page)"
+                    @size-change="(size) => handlePageSizeChange('mutualFriends', size)"
+                  />
+                </el-card>
+              </el-tab-pane>
+
               <el-tab-pane label="双人关系查询" name="pair">
                 <el-card class="panel-card relationship-query-card relationship-pair-card" shadow="hover">
                   <div class="section-title-row">
@@ -538,6 +576,30 @@ createApp({
             </el-button>
           </template>
         </el-dialog>
+
+        <el-dialog
+          v-model="state.mutualFriendDetailVisible"
+          :title="'我和 ' + (state.mutualFriendDetail.targetDisplayName || '') + ' 的共同好友'"
+          width="720px"
+        >
+          <div v-loading="state.loading.mutualFriendDetail" class="mutual-friend-grid">
+            <div
+              v-for="row in state.mutualFriendDetail.rows"
+              :key="row.userId"
+              class="mutual-friend-card"
+            >
+              <el-tooltip :content="getDisplayNameTooltip(row)" :disabled="!getDisplayNameTooltip(row)">
+                <span class="hover-label">{{ getDisplayNameLabel(row) }}</span>
+              </el-tooltip>
+            </div>
+            <div
+              v-if="!state.loading.mutualFriendDetail && !state.mutualFriendDetail.rows.length"
+              class="mutual-friend-empty"
+            >
+              暂无共同好友
+            </div>
+          </div>
+        </el-dialog>
       </div>
     </div>
   `,
@@ -556,6 +618,7 @@ createApp({
       selectingDataDir: false,
       devtoolsClickCount: 0,
       onboardingVisible: false,
+      mutualFriendDetailVisible: false,
       meta: null,
       selectedTab: 'acquaintances',
       selectedTimelineTab: 'sessions',
@@ -584,6 +647,13 @@ createApp({
       },
       relationshipTopRows: [],
       relationshipTopTotal: 0,
+      mutualFriendsRows: [],
+      mutualFriendsTotal: 0,
+      mutualFriendDetail: {
+        userId: '',
+        targetDisplayName: '',
+        rows: []
+      },
       relationshipPair: {
         displayNameA: '',
         displayNameB: '',
@@ -596,6 +666,7 @@ createApp({
         timelineSessions: { page: 1, pageSize: 10 },
         timelineCompanions: { page: 1, pageSize: 10 },
         relationshipTop: { page: 1, pageSize: 10 },
+        mutualFriends: { page: 1, pageSize: 10 },
         pair: { page: 1, pageSize: 10 }
       },
       loading: {
@@ -603,6 +674,8 @@ createApp({
         acquaintances: false,
         timeline: false,
         relationshipTop: false,
+        mutualFriends: false,
+        mutualFriendDetail: false,
         relationshipPair: false
       }
     });
@@ -627,6 +700,8 @@ createApp({
         state.loading.acquaintances ||
         state.loading.timeline ||
         state.loading.relationshipTop ||
+        state.loading.mutualFriends ||
+        state.loading.mutualFriendDetail ||
         state.loading.relationshipPair
     );
     const canAnalyze = computed(() => !state.bootstrapping && !state.appState.requiresOnboarding);
@@ -667,6 +742,10 @@ createApp({
       }
       if (key === 'relationshipTop') {
         await loadRelationshipTop();
+        return;
+      }
+      if (key === 'mutualFriends') {
+        await loadMutualFriends();
         return;
       }
       if (key === 'pair') {
@@ -759,6 +838,14 @@ createApp({
       };
       state.relationshipTopRows = [];
       state.relationshipTopTotal = 0;
+      state.mutualFriendsRows = [];
+      state.mutualFriendsTotal = 0;
+      state.mutualFriendDetail = {
+        userId: '',
+        targetDisplayName: '',
+        rows: []
+      };
+      state.mutualFriendDetailVisible = false;
       state.relationshipPair = {
         displayNameA: '',
         displayNameB: '',
@@ -899,6 +986,65 @@ createApp({
       }
     }
 
+    async function loadMutualFriends(options = {}) {
+      if (!canAnalyze.value) {
+        return;
+      }
+      const silent = Boolean(options?.silent);
+      if (!silent) {
+        state.loading.mutualFriends = true;
+      }
+      try {
+        const qs = new URLSearchParams();
+        qs.set('page', state.pagination.mutualFriends.page);
+        qs.set('pageSize', state.pagination.mutualFriends.pageSize);
+        const data = await getInsightsApi().getMutualFriends(toQueryObject(qs));
+        state.mutualFriendsRows = data.rows || [];
+        state.mutualFriendsTotal = data.total || 0;
+        if (
+          state.mutualFriendDetail.userId &&
+          !state.mutualFriendsRows.some((row) => row.userId === state.mutualFriendDetail.userId)
+        ) {
+          state.mutualFriendDetail = {
+            userId: '',
+            targetDisplayName: '',
+            rows: []
+          };
+          state.mutualFriendDetailVisible = false;
+        }
+        state.pagination.mutualFriends.page = data.page || state.pagination.mutualFriends.page;
+        state.pagination.mutualFriends.pageSize =
+          data.pageSize || state.pagination.mutualFriends.pageSize;
+        normalizePagination('mutualFriends', state.mutualFriendsTotal);
+      } finally {
+        if (!silent) {
+          state.loading.mutualFriends = false;
+        }
+      }
+    }
+
+    async function showMutualFriendDetail(row) {
+      if (!canAnalyze.value || !row?.userId) {
+        return;
+      }
+      state.loading.mutualFriendDetail = true;
+      try {
+        const data = await getInsightsApi().getMutualFriendDetail({
+          userId: row.userId
+        });
+        state.mutualFriendDetail = {
+          userId: data.userId || row.userId,
+          targetDisplayName: data.targetDisplayName || row.displayName || row.userId,
+          rows: data.rows || []
+        };
+        state.mutualFriendDetailVisible = true;
+      } catch (error) {
+        ElMessage.error(`加载失败: ${error.message}`);
+      } finally {
+        state.loading.mutualFriendDetail = false;
+      }
+    }
+
     async function loadRelationshipPair(options = {}) {
       if (!canAnalyze.value || !state.pairUserA || !state.pairUserB) {
         return;
@@ -940,6 +1086,7 @@ createApp({
           loadAcquaintances(options),
           loadTimeline(options),
           loadRelationshipTop(options),
+          loadMutualFriends(options),
           loadRelationshipPair(options)
         ]);
       } catch (error) {
@@ -1123,6 +1270,7 @@ createApp({
       setPresetDates,
       loadTimeline,
       loadRelationshipTop,
+      loadMutualFriends,
       loadRelationshipPair,
       applyAllViews,
        handleReload,
@@ -1130,9 +1278,10 @@ createApp({
        handleAboutTitleClick,
        chooseDataDirectory,
        openRepositoryLink,
-       goTimeline,
-       goRelationship
-     };
+        goTimeline,
+        goRelationship,
+        showMutualFriendDetail
+      };
   }
 }).use(window.ElementPlus, {
   locale: window.ElementPlusLocaleZhCn

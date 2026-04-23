@@ -348,6 +348,65 @@ export class InsightsService {
     };
   }
 
+  getMutualFriends() {
+    const meta = this.getAnalysisMeta();
+    const rows = meta.friendList
+      .map((friend) => {
+        const mutualFriendCount = this.repository
+          .getMutualGraphRows(friend.userId)
+          .filter(
+            (row) =>
+              row.isFriend &&
+              row.userId &&
+              row.userId !== meta.selfUserId &&
+              row.userId !== friend.userId
+          ).length;
+
+        return {
+          userId: friend.userId,
+          displayName: friend.displayName,
+          mutualFriendCount
+        };
+      })
+      .filter((row) => row.mutualFriendCount > 0)
+      .sort(
+        (a, b) =>
+          b.mutualFriendCount - a.mutualFriendCount || a.displayName.localeCompare(b.displayName)
+      );
+
+    return {
+      rows
+    };
+  }
+
+  getMutualFriendDetail({ userId } = {}) {
+    if (!userId) {
+      throw new Error('userId is required');
+    }
+
+    const meta = this.getAnalysisMeta();
+    const rows = this.repository
+      .getMutualGraphRows(userId)
+      .filter(
+        (row) =>
+          row.isFriend &&
+          row.userId &&
+          row.userId !== meta.selfUserId &&
+          row.userId !== userId
+      )
+      .sort((a, b) => a.displayName.localeCompare(b.displayName))
+      .map((row) => ({
+        userId: row.userId,
+        displayName: row.displayName
+      }));
+
+    return {
+      userId,
+      targetDisplayName: this.getCurrentDisplayNameMap(meta).get(userId) || userId,
+      rows
+    };
+  }
+
   getRelationshipPair({ userIdA, userIdB, from, to } = {}) {
     if (!userIdA || !userIdB) {
       throw new Error('userIdA and userIdB are required');

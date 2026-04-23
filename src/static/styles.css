@@ -244,6 +244,42 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.section-hint {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  border-radius: 10px;
+  background: rgba(14, 165, 233, 0.08);
+  color: var(--page-muted);
+  line-height: 1.5;
+}
+
+.mutual-friend-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  min-height: 72px;
+}
+
+.mutual-friend-card {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.56);
+}
+
+.mutual-friend-empty {
+  grid-column: 1 / -1;
+  padding: 18px 12px;
+  text-align: center;
+  color: var(--page-muted);
+  border: 1px dashed rgba(148, 163, 184, 0.16);
+  border-radius: 12px;
+}
+
 .acquaintances-grid {
   grid-template-columns: repeat(2, minmax(660px, 1fr));
   overflow-x: auto;
